@@ -108,7 +108,7 @@
   .stats-strip {
     max-width: 1180px; margin: -1.3rem auto 0; padding: 0 2rem;
     position: relative; z-index: 2;
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
   }
   .stat-card {
     background: var(--surface);
@@ -124,6 +124,7 @@
   .stat-card.c-submitted .num { color: var(--amber); }
   .stat-card.c-approved .num { color: var(--accent); }
   .stat-card.c-overdue .num { color: var(--coral); }
+  .stat-card.c-missing .num { color: var(--purple); }
 
   /* MAIN */
   .main { max-width: 1180px; margin: 0 auto; padding: 1.8rem 2rem 4rem; }
@@ -240,6 +241,24 @@
     padding: 0; -webkit-appearance: none; appearance: none;
   }
 
+  .components-cell { display: flex; align-items: center; gap: 8px; }
+  .components-cell input[type="checkbox"] { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent); }
+  .feedback-dot {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--amber-light); color: var(--amber);
+    font-size: 11px; cursor: help;
+  }
+
+  .checkbox-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: var(--surface2); border-radius: 10px; padding: 12px 14px;
+  }
+  .checkbox-row input[type="checkbox"] { width: 18px; height: 18px; margin-top: 1px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; }
+  .checkbox-row .checkbox-text { font-size: 13.5px; }
+  .checkbox-row .checkbox-text strong { display: block; font-weight: 500; margin-bottom: 2px; }
+  .checkbox-row .checkbox-text span { color: var(--text-muted); font-size: 12px; }
+
   .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
   .icon-btn {
     width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--border);
@@ -307,7 +326,7 @@
   @media (max-width: 800px) {
     .stats-strip { grid-template-columns: repeat(2, 1fr); }
     .table-wrap { overflow-x: auto; }
-    table { min-width: 760px; }
+    table { min-width: 900px; }
   }
 
   @media print {
@@ -350,6 +369,7 @@
   <div class="stat-card c-submitted"><div class="num" id="stat-submitted">0</div><div class="lbl">Awaiting review</div></div>
   <div class="stat-card c-approved"><div class="num" id="stat-approved">0</div><div class="lbl">Approved</div></div>
   <div class="stat-card c-overdue"><div class="num" id="stat-overdue">0</div><div class="lbl">Overdue</div></div>
+  <div class="stat-card c-missing"><div class="num" id="stat-missing">0</div><div class="lbl">Missing components</div></div>
 </div>
 
 <main class="main">
@@ -367,6 +387,11 @@
       </div>
       <select class="filter-select" id="filter-teacher" onchange="renderTable()"><option value="">All teachers</option></select>
       <select class="filter-select" id="filter-term" onchange="renderTable()"><option value="">All terms</option></select>
+      <select class="filter-select" id="filter-components" onchange="renderTable()">
+        <option value="">All components</option>
+        <option value="complete">Components complete</option>
+        <option value="missing">Components missing</option>
+      </select>
       <select class="filter-select" id="filter-status" onchange="renderTable()">
         <option value="">All statuses</option>
         <option value="not_started">Not started</option>
@@ -393,6 +418,7 @@
           <th data-key="unitTitle">Unit / subject</th>
           <th data-key="term">Term</th>
           <th data-key="dueDate">Due date</th>
+          <th data-key="componentsComplete">Components</th>
           <th data-key="status">Status</th>
           <th data-key="updatedAt">Last updated</th>
           <th style="text-align:right">Actions</th>
@@ -479,13 +505,20 @@
           </select>
         </div>
         <div>
-          <label>Link to document</label>
-          <input type="url" id="f-link" placeholder="SharePoint / OneDrive / Teams link" />
+          <label>Link to ManageBac unit plan</label>
+          <input type="url" id="f-link" placeholder="ManageBac / SharePoint / Teams link" />
         </div>
       </div>
+      <div class="form-row checkbox-row">
+        <input type="checkbox" id="f-components" />
+        <label for="f-components" class="checkbox-text" style="margin:0; cursor:pointer;">
+          <strong>All required components are complete in ManageBac</strong>
+          <span>Tick once you've checked the unit plan in ManageBac against the department's required components (e.g. statement of inquiry, objectives, assessment tasks, ATL skills, resources).</span>
+        </label>
+      </div>
       <div class="form-row">
-        <label>HOD notes / feedback</label>
-        <textarea id="f-notes" placeholder="Optional comments, e.g. feedback given, revision requests…"></textarea>
+        <label>Feedback / comments</label>
+        <textarea id="f-notes" placeholder="e.g. Missing assessment rubric and ATL skills — ask teacher to add before next review"></textarea>
       </div>
     </div>
     <div class="modal-footer">
@@ -610,6 +643,7 @@ function updateStats() {
   document.getElementById('stat-submitted').textContent = plans.filter(p => p.status === 'submitted').length;
   document.getElementById('stat-approved').textContent = plans.filter(p => p.status === 'approved').length;
   document.getElementById('stat-overdue').textContent = plans.filter(isOverdue).length;
+  document.getElementById('stat-missing').textContent = plans.filter(p => !p.componentsComplete).length;
 }
 
 function getFilteredSorted() {
@@ -617,11 +651,14 @@ function getFilteredSorted() {
   const fTeacher = document.getElementById('filter-teacher').value;
   const fTerm = document.getElementById('filter-term').value;
   const fStatus = document.getElementById('filter-status').value;
+  const fComponents = document.getElementById('filter-components').value;
 
   let list = plans.filter(p => {
     if (fTeacher && p.teacher !== fTeacher) return false;
     if (fTerm && p.term !== fTerm) return false;
     if (fStatus && p.status !== fStatus) return false;
+    if (fComponents === 'complete' && !p.componentsComplete) return false;
+    if (fComponents === 'missing' && p.componentsComplete) return false;
     if (q) {
       const hay = `${p.teacher} ${p.subject} ${p.unitTitle} ${p.grade}`.toLowerCase();
       if (!hay.includes(q)) return false;
@@ -682,6 +719,12 @@ function renderTable() {
         <td>${escapeHtml(p.term) || '<span class="muted-dash">—</span>'}</td>
         <td>${p.dueDate ? formatDate(p.dueDate) + (overdue ? ' <span style="color:var(--coral);font-weight:600">(overdue)</span>' : '') : '<span class="muted-dash">—</span>'}</td>
         <td>
+          <div class="components-cell">
+            <input type="checkbox" ${p.componentsComplete ? 'checked' : ''} title="All required components complete in ManageBac" onchange="quickToggleComponents('${p.id}', this.checked)" />
+            ${p.notes ? `<span class="feedback-dot" title="${escapeHtml(p.notes)}">💬</span>` : ''}
+          </div>
+        </td>
+        <td>
           <span class="badge ${meta.cls}">
             <span class="badge-dot"></span>
             <select class="status-inline" onchange="quickSetStatus('${p.id}', this.value)">
@@ -721,6 +764,15 @@ function quickSetStatus(id, status) {
   renderTable();
 }
 
+function quickToggleComponents(id, checked) {
+  const p = plans.find(x => x.id === id);
+  if (!p) return;
+  p.componentsComplete = checked;
+  p.updatedAt = new Date().toISOString();
+  savePlans();
+  renderTable();
+}
+
 function deletePlan(id) {
   const p = plans.find(x => x.id === id);
   if (!p) return;
@@ -743,6 +795,7 @@ function openEditModal(id) {
   document.getElementById('f-due').value = p?.dueDate || '';
   document.getElementById('f-status').value = p?.status || 'not_started';
   document.getElementById('f-link').value = p?.link || '';
+  document.getElementById('f-components').checked = !!p?.componentsComplete;
   document.getElementById('f-notes').value = p?.notes || '';
   document.getElementById('edit-modal').classList.add('open');
   document.getElementById('f-teacher').focus();
@@ -770,6 +823,7 @@ function savePlan() {
     dueDate: document.getElementById('f-due').value,
     status: document.getElementById('f-status').value,
     link: document.getElementById('f-link').value.trim(),
+    componentsComplete: document.getElementById('f-components').checked,
     notes: document.getElementById('f-notes').value.trim(),
     updatedAt: new Date().toISOString(),
   };
@@ -804,9 +858,13 @@ function csvEscape(v) {
 }
 
 function exportCSV() {
-  const cols = ['teacher','subject','grade','term','unitTitle','startDate','dueDate','status','link','notes','updatedAt'];
-  const header = ['Teacher','Subject','Grade/Class','Term','Unit Title','Start Date','Due Date','Status','Link','Notes','Last Updated'];
-  const rows = [header, ...plans.map(p => cols.map(c => c === 'status' ? (STATUS_META[p.status]?.label || p.status) : p[c]))];
+  const cols = ['teacher','subject','grade','term','unitTitle','startDate','dueDate','componentsComplete','status','link','notes','updatedAt'];
+  const header = ['Teacher','Subject','Grade/Class','Term','Unit Title','Start Date','Due Date','Components Complete','Status','Link','Feedback / Comments','Last Updated'];
+  const rows = [header, ...plans.map(p => cols.map(c => {
+    if (c === 'status') return STATUS_META[p.status]?.label || p.status;
+    if (c === 'componentsComplete') return p.componentsComplete ? 'Yes' : 'No';
+    return p[c];
+  }))];
   const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
   downloadFile(csv, `unit-plan-tracker-${todayISO()}.csv`, 'text/csv');
 }
@@ -862,7 +920,8 @@ function handleImport(event) {
           teacher: d.teacher || '', subject: d.subject || '', grade: d.grade || '',
           term: d.term || '', unitTitle: d.unitTitle || '', startDate: d.startDate || '',
           dueDate: d.dueDate || '', status: STATUS_META[d.status] ? d.status : 'not_started',
-          link: d.link || '', notes: d.notes || '', updatedAt: d.updatedAt || new Date().toISOString(),
+          link: d.link || '', componentsComplete: !!d.componentsComplete,
+          notes: d.notes || '', updatedAt: d.updatedAt || new Date().toISOString(),
         }));
       } else {
         const rows = parseCSV(reader.result);
@@ -877,9 +936,10 @@ function handleImport(event) {
           unitTitle: r[idx('unit title')] || '',
           startDate: r[idx('start date')] || '',
           dueDate: r[idx('due date')] || '',
+          componentsComplete: ['yes','true','1'].includes((r[idx('components complete')] || '').toLowerCase().trim()),
           status: STATUS_LABEL_TO_KEY[(r[idx('status')] || '').toLowerCase()] || 'not_started',
           link: r[idx('link')] || '',
-          notes: r[idx('notes')] || '',
+          notes: r[idx('feedback / comments')] || r[idx('notes')] || '',
           updatedAt: r[idx('last updated')] || new Date().toISOString(),
         })).filter(p => p.teacher || p.unitTitle);
       }
@@ -905,10 +965,10 @@ function handleImport(event) {
 
 function loadSampleData() {
   const sample = [
-    { teacher: 'Sarah Chen', subject: 'Science', grade: 'Grade 7', term: 'Term 1', unitTitle: 'Forces and Motion', startDate: todayISO(), dueDate: addDays(7), status: 'in_progress', link: '', notes: '' },
-    { teacher: 'James Wu', subject: 'English', grade: 'Grade 9', term: 'Term 1', unitTitle: 'Persuasive Writing', startDate: todayISO(), dueDate: addDays(-2), status: 'submitted', link: '', notes: 'Awaiting HOD review' },
-    { teacher: 'Maria Santos', subject: 'Mathematics', grade: 'Grade 8', term: 'Term 1', unitTitle: 'Linear Equations', startDate: todayISO(), dueDate: addDays(-5), status: 'approved', link: '', notes: 'Signed off' },
-    { teacher: 'David Lin', subject: 'Humanities', grade: 'Grade 10', term: 'Term 1', unitTitle: 'The Cold War', startDate: todayISO(), dueDate: addDays(-1), status: 'revise', link: '', notes: 'Needs clearer assessment rubric' },
+    { teacher: 'Sarah Chen', subject: 'Science', grade: 'Grade 7', term: 'Term 1', unitTitle: 'Forces and Motion', startDate: todayISO(), dueDate: addDays(7), status: 'in_progress', link: '', componentsComplete: false, notes: '' },
+    { teacher: 'James Wu', subject: 'English', grade: 'Grade 9', term: 'Term 1', unitTitle: 'Persuasive Writing', startDate: todayISO(), dueDate: addDays(-2), status: 'submitted', link: '', componentsComplete: true, notes: 'Awaiting HOD review' },
+    { teacher: 'Maria Santos', subject: 'Mathematics', grade: 'Grade 8', term: 'Term 1', unitTitle: 'Linear Equations', startDate: todayISO(), dueDate: addDays(-5), status: 'approved', link: '', componentsComplete: true, notes: 'Signed off' },
+    { teacher: 'David Lin', subject: 'Humanities', grade: 'Grade 10', term: 'Term 1', unitTitle: 'The Cold War', startDate: todayISO(), dueDate: addDays(-1), status: 'revise', link: '', componentsComplete: false, notes: 'Missing assessment rubric and ATL skills — ask teacher to add before next review' },
   ].map(p => ({ id: uid(), ...p, updatedAt: new Date().toISOString() }));
   plans = [...plans, ...sample];
   savePlans();
